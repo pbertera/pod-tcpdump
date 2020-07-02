@@ -2,6 +2,8 @@
 
 set -eo pipefail
 
+tcpdump_opts="-s0 -U -w -"
+
 exit_err() {
    echo >&2 "${1}"
    exit 1
@@ -11,11 +13,13 @@ usage() {
     local SELF
     SELF="pod-tcpdump"
     if [[ "$(basename "$0")" == oc-* ]]; then
-        SELF="oc ocp-pod-tcpdump"
+        SELF="oc pod-tcpdump"
     fi
     cat <<EOF
 pod-tcpdump is a debugging tool helping to start a tcpdump on a running pod.
-In case 
+Tcpdump is executed with the default options '$tcpdump_opts'. Be aware that passing the '-w file.pcap' option will not work: tcpdump is
+executed in a container, file.pcap will be not available on the local machine. In case you want to use some tcpdump option and same the
+data on a file you should use -f and the tcpdump '-w -' option '$SELF -f dump.pcap -- -w - [..]'
 
 Usage:
     $SELF POD [-n NAMESPACE] [-f OUT-FILE] -- [TCPDUMP-OPTIONS]
@@ -52,8 +56,6 @@ get_node() {
 
 main() {
     [ $# -eq 0 ] && exit_err "You must specify a pod for dumping network traffic"
-
-    tcpdump_opts="-s0 -U -w -"
 
     while [ $# -gt 0 ]; do
         case "$1" in
