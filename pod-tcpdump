@@ -1,0 +1,110 @@
+#!/bin/bash
+
+set -eo pipefail
+
+exit_err() {
+   echo >&2 "${1}"
+   exit 1
+}
+
+usage() {
+    local SELF
+    SELF="pod-tcpdump"
+    if [[ "$(basename "$0")" == oc-* ]]; then
+        SELF="oc ocp-pod-tcpdump"
+    fi
+    cat <<EOF
+pod-tcpdump is a debugging tool helping to start a tcpdump on a running pod.
+In case 
+
+Usage:
+    $SELF POD [-n NAMESPACE] [-f OUT-FILE] -- [TCPDUMP-OPTIONS]
+
+Example:
+    Start a tcpdump on the pod nginx-1-7xm8j in the current namespace:
+    $SELF nginx-1-7xm8j 
+
+    Start a tcpdump on the pod in the openshift-ingress pod:
+    $SELF -n openshift-ingress 444444
+
+    Start a tcpdump on the pod nginx-1-7xm8j with custom options:
+    $SELF nginx-1-7xm8j -- -i tun0 -nn -s0
+
+    Start a tcpdump on the pod and save the output on a specific file (by default the filename is auto-generated)
+    $SELF -f dump.pcap nginx-1-7xm8j
+
+    Start a tcpdump on the pod and print the output on standard output
+    $SELF -f - nginx-1-7xm8j
+EOF
+}
+
+is_running() {
+    phase=$(oc get pod -n "$namespace" "$pod" -o jsonpath='{.status.phase}')
+    if [[ "$phase" != "Running" ]]; then
+        echo "Pod is not in Running phase ($phase)"
+        exit -1
+    fi
+}
+
+get_node() {
+    oc get pod -n "$namespace" "$pod" -o jsonpath='{.spec.nodeName}'
+}
+
+main() {
+    [ $# -eq 0 ] && exit_err "You must specify a pod for dumping network traffic"
+
+    tcpdump_opts="-s0 -U -w -"
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -h | --help)
+                usage
+                exit
+                ;;
+            -n | --namespace)
+                namespace="$2"
+                shift
+                shift
+                ;;
+            -f | --filename)
+                filename="$2"
+                shift
+                shift
+                ;;
+            --)
+                shift
+                tcpdump_opts="$@"
+                break
+                ;;
+            *)
+                pod="$1"
+                shift
+                ;;
+        esac
+    done
+    
+    if [[ "$namespace" == "" ]]; then
+        namespace=$(oc config view --minify --output 'jsonpath={..namespace}')
+    fi
+    is_running $pod
+    node=$(get_node)
+    if [[ "$filename" == "" ]]; then
+        filename="${node}_${namespace}_${pod}_$(date +\%d_%m_%Y-%H_%M_%S-%Z).pcap"
+    fi
+    if [[ "$filename" == "-" ]]; then
+        exec 4>&1
+        filename="stdout"
+    else
+        exec 4>$filename
+    fi
+
+    echo "Dumping traffic on pod $pod in $namespace, pod is running on node $node"
+    echo "Data gathered via 'tcpdump $tcpdump_opts' will be saved on $filename"
+    cat <<EOF | oc debug node/"$node">&4
+cid=\$(chroot /host crictl ps -q --pod \$(chroot /host crictl pods -q --name $pod --namespace $namespace))
+pid=\$(chroot /host crictl inspect \$cid --output yaml | grep 'pid:' | awk '{print \$2}')
+nsenter -n -t \$pid -- tcpdump $tcpdump_opts
+EOF
+}
+
+main "$@"
