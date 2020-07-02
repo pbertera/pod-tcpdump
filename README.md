@@ -42,3 +42,5 @@ Example:
     Start a tcpdump on the pod and print the output on standard output
     oc pod-tcpdump -f - nginx-1-7xm8j
 ```
+
+[![asciicast](https://asciinema.org/a/UXuc66hM4kCTZVK5Tc9gsxuoZ.svg)](https://asciinema.org/a/UXuc66hM4kCTZVK5Tc9gsxuoZ)
