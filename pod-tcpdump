@@ -111,7 +111,7 @@ main() {
     echo "Dumping traffic on pod $pod in $namespace, pod is running on node $node"
     echo "Data gathered via 'tcpdump $tcpdump_opts' will be saved on $filename"
     cat <<EOF | oc debug node/"$node">&4
-cid=\$(chroot /host crictl ps -q --pod \$(chroot /host crictl pods -q --name $pod --namespace $namespace))
+cid=\$(chroot /host crictl ps -q --pod \$(chroot /host crictl pods -q --name $pod --namespace $namespace) | head -n 1)
 pid=\$(chroot /host crictl inspect \$cid --output yaml | grep 'pid:' | awk '{print \$2}')
 nsenter -n -t \$pid -- tcpdump $tcpdump_opts
 EOF
