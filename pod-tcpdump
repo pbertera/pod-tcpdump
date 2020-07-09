@@ -3,6 +3,8 @@
 set -eo pipefail
 
 tcpdump_opts="-s0 -U -w -"
+quiet="false"
+no_stderr=""
 
 exit_err() {
    echo >&2 "${1}"
@@ -18,7 +20,7 @@ usage() {
     cat <<EOF
 pod-tcpdump is a debugging tool helping to start a tcpdump on a running pod.
 The command starts a debug pod on the node where the pod is scheduled and then executes tcpdump
-with nsenter(5) into the pod namespace.
+with nsenter(1) into the pod namespace.
 
 Tcpdump is executed with the default options '$tcpdump_opts'.
 
@@ -31,7 +33,7 @@ tcpdump '-w -' option: '$SELF -f dump.pcap -- -w - [..]'
 If the ++ separator is used instead of -- the subsequent options ar concatenated to the default options ($tcpdump_opts) 
 
 Usage:
-    $SELF POD [-n NAMESPACE] [-f OUT-FILE] {--|++} [TCPDUMP-OPTIONS]
+    $SELF POD [--quiet | -q] [-n NAMESPACE] [-f OUT-FILE] [ {--|++} {TCPDUMP-OPTIONS} ]
 
 Example:
     Start a tcpdump on the pod nginx-1-7xm8j in the current namespace:
@@ -54,6 +56,9 @@ Example:
 
     Append some tcpdump options to the default options
     $SELF -n openshift-ingress router-default-7f64869574-c876w -f dump.pcap ++ -i any port 80
+
+    Start the tcpdump in quiet mode and pipe to tshark
+    $SELF ruby-ex-1-wbn4l -f - -q | tshark -r - http
 EOF
 }
 
@@ -88,6 +93,11 @@ main() {
                 shift
                 shift
                 ;;
+            -q | --quiet)
+                quiet="true"
+                no_stderr='2>/dev/null'
+                shift
+                ;;
             --)
                 shift
                 tcpdump_opts="$@"
@@ -120,9 +130,13 @@ main() {
         exec 4>$filename
     fi
 
-    echo "Dumping traffic on pod $pod in $namespace, pod is running on node $node"
-    echo "Data gathered via 'tcpdump $tcpdump_opts' will be saved on $filename"
-    cat <<EOF | oc debug node/"$node">&4
+    if [[ "$quiet" == "false" ]]; then
+        echo "Dumping traffic on pod $pod in $namespace, pod is running on node $node"
+        echo "Data gathered via 'tcpdump $tcpdump_opts' will be saved on $filename"
+    else
+        exec 2>/dev/null
+    fi
+    cat <<EOF | oc debug node/$node >&4
 cid=\$(chroot /host crictl ps -q --pod \$(chroot /host crictl pods -q --name $pod --namespace $namespace) | head -n 1)
 pid=\$(chroot /host crictl inspect \$cid --output yaml | grep 'pid:' | awk '{print \$2}')
 nsenter -n -t \$pid -- tcpdump $tcpdump_opts
