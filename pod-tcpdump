@@ -4,7 +4,6 @@ set -eo pipefail
 
 tcpdump_opts="-s0 -U -w -"
 quiet="false"
-no_stderr=""
 
 exit_err() {
    echo >&2 "${1}"
@@ -19,46 +18,55 @@ usage() {
     fi
     cat <<EOF
 pod-tcpdump is a debugging tool helping to start a tcpdump on a running pod.
-The command starts a debug pod on the node where the pod is scheduled and then executes tcpdump
-with nsenter(1) into the pod namespace.
-
-Tcpdump is executed with the default options '$tcpdump_opts'.
-
-Be aware that passing the '-w file.pcap' option will not work: tcpdump is executed in a container, file.pcap will be not available on the local machine.
-
-In case you want to use some tcpdump options and save the data on a file you should use -f and the
-
-tcpdump '-w -' option: '$SELF -f dump.pcap -- -w - [..]'
-
-If the ++ separator is used instead of -- the subsequent options ar concatenated to the default options ($tcpdump_opts) 
+The command starts a debug pod on the node where the pod is scheduled and
+then executes tcpdump with nsenter(1) into the pod namespace.
 
 Usage:
-    $SELF POD [--quiet | -q] [-n NAMESPACE] [-f OUT-FILE] [ {--|++} {TCPDUMP-OPTIONS} ]
+    $SELF POD [OPTIONS]
+
+Options:
+    -q | --quiet : run $SELF in quiet mode, without printing any message,
+                   useful with -f - and to pipe the output directly to wireshark
+
+    -n | --namespace NS : define the namespace where the POD is residing,
+                          if not defined uses the current namespace
+
+    -f | --filename FILE : the filename where the output of tcpdump should be
+                           saved, using -f - will print on stdout
+
+    -- | ++ TCPDUMP-OPTIONS : a separator between the $SELF options and the
+                              tcpdump options. Using ++ the TCPDUMP-OPTIONS
+                              are appended to the defaults ($tcpdump_opts).
+                              Using -- the default options are removed
+
+Remember that passing the '-w file.pcap' option will not work: tcpdump is
+executed in a container, file.pcap will be not available on the local machine.
 
 Example:
     Start a tcpdump on the pod nginx-1-7xm8j in the current namespace:
-    $SELF nginx-1-7xm8j 
+    $ $SELF nginx-1-7xm8j
 
-    Start a tcpdump on the pod and save the output on a specific file (by default the filename is auto-generated)
-    $SELF -f dump.pcap nginx-1-7xm8j
+    Start a tcpdump on the pod and save the output on a specific file
+    (by default the filename is auto-generated)
+    $ $SELF -f dump.pcap nginx-1-7xm8j
 
     Start a tcpdump on the pod and print the output on standard output
-    $SELF -f - nginx-1-7xm8j
+    $ $SELF -f - nginx-1-7xm8j
 
-    Start a tcpdump on the pod router-default-7f64869574-c876w in the openshift-ingress pod:
-    $SELF -n openshift-ingress router-default-7f64869574-c876w
+    Start a tcpdump on the pod router-c876w in the openshift-ingress pod:
+    $ $SELF -n openshift-ingress router-c876w
 
     List all the available network interfaces on a pod (with tcpdump -D)
-    $SELF -n openshift-ingress router-default-7f64869574-c876w -f - -- -D
+    $ $SELF router-c876w -f - -- -D
 
-    Start a tcpdump on the pod router-default-7f64869574-c876w with custom options:
-    $SELF -n openshift-ingress router-default-7f64869574-c876w -f dump.pcap -- -i tun0 -s0 -U -w -
+    Start a tcpdump on the pod router-c876w with custom options:
+    $ $SELF router-c876w -f dump.pcap -- -i tun0 -s0 -U -w -
 
     Append some tcpdump options to the default options
-    $SELF -n openshift-ingress router-default-7f64869574-c876w -f dump.pcap ++ -i any port 80
+    $ $SELF router-c876w -f dump.pcap ++ -i any port 80
 
     Start the tcpdump in quiet mode and pipe to tshark
-    $SELF ruby-ex-1-wbn4l -f - -q | tshark -r - http
+    $ $SELF ruby-ex-1-wbn4l -f - -q | tshark -r - http
 EOF
 }
 
@@ -95,7 +103,6 @@ main() {
                 ;;
             -q | --quiet)
                 quiet="true"
-                no_stderr='2>/dev/null'
                 shift
                 ;;
             --)
