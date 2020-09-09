@@ -145,7 +145,7 @@ main() {
     fi
     cat <<EOF | oc debug node/$node >&4
 cid=\$(chroot /host crictl ps -q --pod \$(chroot /host crictl pods -q --name $pod --namespace $namespace) | head -n 1)
-pid=\$(chroot /host crictl inspect \$cid --output yaml | grep 'pid:' | awk '{print \$2}')
+pid=\$(chroot /host crictl inspect --output yaml \$cid | grep 'pid:' | awk '{print \$2}')
 nsenter -n -t \$pid -- tcpdump $tcpdump_opts
 EOF
 }
